@@ -257,13 +257,13 @@ func (t *Timed) Pause() *promise.Type[any] {
 	})
 }
 
-func (t *Timed) Resume(duration ...time.Duration) *promise.Type[any] {
+func (t *Timed) Resume(delay ...time.Duration) *promise.Type[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			select {
 			case v := <-t.block:
-				if len(duration) > 0 {
-					d := duration[0]
+				if len(delay) > 0 {
+					d := delay[0]
 					v.delay = &d
 				} else {
 					v.delay = nil
@@ -277,10 +277,10 @@ func (t *Timed) Resume(duration ...time.Duration) *promise.Type[any] {
 	})
 }
 
-func (t *Timed) SetInterval(duration time.Duration) *promise.Type[any] {
+func (t *Timed) SetInterval(interval time.Duration) *promise.Type[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
-			t.interval.Store(&duration)
+			t.interval.Store(&interval)
 			rs.ResolveValue(nil)
 		},
 	})
@@ -327,14 +327,14 @@ func (t *Timed) ReduceTimeBy(delta int64) *promise.Type[int64] {
 	}
 }
 
-func (t *Timed) Start(duration ...time.Duration) *promise.Type[int64] {
+func (t *Timed) Start(delay ...time.Duration) *promise.Type[int64] {
 	t.start.Do(func() {
 		start := (&promise.Type[any]{
 			Job: promise.Job[any]{
 				Do: func(rs promise.Resolver[any], re promise.Rejector) {
 					t.run()
 					t.block <- timedToken{}
-					rs.ResolvePromise(t.Resume(duration...))
+					rs.ResolvePromise(t.Resume(delay...))
 				},
 			},
 		}).Init()
