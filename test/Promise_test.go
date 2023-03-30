@@ -13,16 +13,15 @@ func TestPromise(t *testing.T) {
 	var x atomic.Int32
 	var allWork []*promise.Type[string]
 	interval := 500 * time.Millisecond
-	semaphore := (&promise.Semaphore{}).Init(1)
+	semaphore := promise.NewSemaphore(1)
 	for i := 0; i < num; i++ {
 		ii := i
-		p := (&promise.Type[string]{
-			Semaphore: semaphore,
-			Job: promise.Job[string]{Do: func(resolver promise.Resolver[string], rejector promise.Rejector) {
+		p := promise.NewPromiseWithSemaphore(promise.Job[string]{
+			Do: func(resolver promise.Resolver[string], rejector promise.Rejector) {
 				time.Sleep(interval)
 				resolver.ResolveValue(nil)
-			}},
-		}).Init()
+			},
+		}, semaphore)
 		allWork = append(allWork, p)
 		p.SetTimeout(interval*5, &promise.TimeOutListener{OnTimeOut: func(duration time.Duration) {
 			fmt.Printf("任务 %d 已超时（%f s）\n", ii, duration.Seconds())

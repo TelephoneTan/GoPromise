@@ -6,6 +6,10 @@ type Semaphore struct {
 	dark   line
 }
 
+func NewSemaphore(available uint64) *Semaphore {
+	return (&Semaphore{}).Init(available)
+}
+
 func (s *Semaphore) Init(available uint64) *Semaphore {
 	s.ticket = make(line, available)
 	s.dark = make(line, available)

@@ -156,6 +156,9 @@ func (t *Type[T]) start(wrapJobWithSemaphore bool) {
 }
 
 func (t *Type[T]) SetTimeout(d time.Duration, onTimeOut ...*TimeOutListener) *Type[T] {
+	if t.TryAwait() {
+		return t
+	}
 	go func(sn uint64) {
 		time.Sleep(d)
 		if t.timeoutSN.Load() == sn && t.Cancel() && len(onTimeOut) > 0 && onTimeOut[0].OnTimeOut != nil {
@@ -522,4 +525,18 @@ func Resolve[T any](value *T) *Type[T] {
 
 func Reject[SUPPLY any](reason error) *Type[SUPPLY] {
 	return (&Type[SUPPLY]{}).init(false, false).fail(reason)
+}
+
+func Cancelled[SUPPLY any]() *Type[SUPPLY] {
+	promise := (&Type[SUPPLY]{}).init(false, false)
+	promise.Cancel()
+	return promise
+}
+
+func NewPromise[T any](job Job[T]) *Type[T] {
+	return (&Type[T]{Job: job}).Init()
+}
+
+func NewPromiseWithSemaphore[T any](job Job[T], semaphore *Semaphore) *Type[T] {
+	return (&Type[T]{Job: job, Semaphore: semaphore}).Init()
 }
