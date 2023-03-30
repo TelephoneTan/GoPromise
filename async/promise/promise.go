@@ -100,6 +100,17 @@ func (t *Type[T]) copyStateTo(tt *Type[T]) {
 	}
 }
 
+func (t *Type[T]) Resolve(valueOrPromise any) {
+	switch x := valueOrPromise.(type) {
+	case nil:
+		t.ResolveValue(nil)
+	case *T:
+		t.ResolveValue(x)
+	case *Type[T]:
+		t.ResolvePromise(x)
+	}
+}
+
 func (t *Type[T]) ResolveValue(value *T) {
 	t.succeed(value)
 }
