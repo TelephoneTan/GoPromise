@@ -26,7 +26,7 @@ type Timed struct {
 	succeeded      chan int64
 	failed         chan error
 	cancelled      line
-	promise        *promise.Type[int64]
+	promise        *promise.Promise[int64]
 	start          sync.Once
 	//
 	Job       promise.Job[bool]
@@ -48,7 +48,7 @@ func (t *Timed) Init(interval time.Duration, times ...int64) *Timed {
 	t.succeeded = make(chan int64, 1)
 	t.failed = make(chan error, 1)
 	t.cancelled = make(line, 1)
-	t.promise = (&promise.Type[int64]{
+	t.promise = (&promise.Promise[int64]{
 		Job: promise.Job[int64]{
 			Do: func(rs promise.Resolver[int64], re promise.Rejector) {
 				<-t.archived
@@ -74,8 +74,8 @@ func (t *Timed) IsArchived() bool {
 	}
 }
 
-func modify[R any](timed *Timed, op promise.Job[R]) *promise.Type[R] {
-	operate := (&promise.Type[R]{
+func modify[R any](timed *Timed, op promise.Job[R]) *promise.Promise[R] {
+	operate := (&promise.Promise[R]{
 		Job: promise.Job[R]{
 			Do: func(rs promise.Resolver[R], re promise.Rejector) {
 				timed.modifying <- signal
@@ -88,7 +88,7 @@ func modify[R any](timed *Timed, op promise.Job[R]) *promise.Type[R] {
 		},
 	}).Init()
 	promise.Finally[R](operate, promise.SettledListener[any]{
-		OnSettled: func() *promise.Type[any] {
+		OnSettled: func() *promise.Promise[any] {
 			<-timed.modifying
 			return nil
 		},
@@ -116,7 +116,7 @@ func (t *Timed) error(e error) {
 	})
 }
 
-func (t *Timed) Cancel() *promise.Type[any] {
+func (t *Timed) Cancel() *promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			t.cancelled <- signal
@@ -127,7 +127,7 @@ func (t *Timed) Cancel() *promise.Type[any] {
 	})
 }
 
-func (t *Timed) checkAlive(consumeLife bool) *promise.Type[any] {
+func (t *Timed) checkAlive(consumeLife bool) *promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			lt := t.lifeTimes.Load()
@@ -146,8 +146,8 @@ func (t *Timed) checkAlive(consumeLife bool) *promise.Type[any] {
 	})
 }
 
-func (t *Timed) prepare() *promise.Type[any] {
-	resume := (&promise.Type[timedToken]{
+func (t *Timed) prepare() *promise.Promise[any] {
+	resume := (&promise.Promise[timedToken]{
 		Job: promise.Job[timedToken]{
 			Do: func(rs promise.Resolver[timedToken], re promise.Rejector) {
 				select {
@@ -189,7 +189,7 @@ func (t *Timed) run() {
 	prepare := t.prepare()
 	execute := promise.Then(prepare, promise.FulfilledListener[any, bool]{
 		OnFulfilled: func(_ *any) any {
-			return (&promise.Type[bool]{
+			return (&promise.Promise[bool]{
 				Job:       t.Job,
 				Semaphore: t.Semaphore,
 			}).Init()
@@ -243,7 +243,7 @@ func (t *Timed) run() {
 	})
 }
 
-func (t *Timed) Pause() *promise.Type[any] {
+func (t *Timed) Pause() *promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			select {
@@ -257,7 +257,7 @@ func (t *Timed) Pause() *promise.Type[any] {
 	})
 }
 
-func (t *Timed) Resume(delay ...time.Duration) *promise.Type[any] {
+func (t *Timed) Resume(delay ...time.Duration) *promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			select {
@@ -277,7 +277,7 @@ func (t *Timed) Resume(delay ...time.Duration) *promise.Type[any] {
 	})
 }
 
-func (t *Timed) SetInterval(interval time.Duration) *promise.Type[any] {
+func (t *Timed) SetInterval(interval time.Duration) *promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			t.interval.Store(&interval)
@@ -286,7 +286,7 @@ func (t *Timed) SetInterval(interval time.Duration) *promise.Type[any] {
 	})
 }
 
-func (t *Timed) AddTimesBy(delta int64) *promise.Type[int64] {
+func (t *Timed) AddTimesBy(delta int64) *promise.Promise[int64] {
 	if !t.lifeLimited {
 		return promise.Reject[int64](errors.New("该定时任务无固定运行次数"))
 	} else if delta < 0 {
@@ -303,7 +303,7 @@ func (t *Timed) AddTimesBy(delta int64) *promise.Type[int64] {
 	}
 }
 
-func (t *Timed) ReduceTimeBy(delta int64) *promise.Type[int64] {
+func (t *Timed) ReduceTimeBy(delta int64) *promise.Promise[int64] {
 	if !t.lifeLimited {
 		return promise.Reject[int64](errors.New("该定时任务无固定运行次数"))
 	} else if delta < 0 {
@@ -327,9 +327,9 @@ func (t *Timed) ReduceTimeBy(delta int64) *promise.Type[int64] {
 	}
 }
 
-func (t *Timed) Start(delay ...time.Duration) *promise.Type[int64] {
+func (t *Timed) Start(delay ...time.Duration) *promise.Promise[int64] {
 	t.start.Do(func() {
-		start := (&promise.Type[any]{
+		start := (&promise.Promise[any]{
 			Job: promise.Job[any]{
 				Do: func(rs promise.Resolver[any], re promise.Rejector) {
 					t.run()

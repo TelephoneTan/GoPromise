@@ -11,7 +11,7 @@ import (
 func TestPromise(t *testing.T) {
 	num := 20
 	var x atomic.Int32
-	var allWork []*promise.Type[string]
+	var allWork []*promise.Promise[string]
 	interval := 500 * time.Millisecond
 	semaphore := promise.NewSemaphore(1)
 	for i := 0; i < num; i++ {

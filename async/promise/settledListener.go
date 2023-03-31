@@ -1,5 +1,5 @@
 package promise
 
 type SettledListener[T any] struct {
-	OnSettled func() *Type[T]
+	OnSettled func() *Promise[T]
 }

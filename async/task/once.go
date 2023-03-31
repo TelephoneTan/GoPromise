@@ -9,7 +9,7 @@ type Once[T any] struct {
 	Job       promise.Job[T]
 	Semaphore *promise.Semaphore
 	once      sync.Once
-	promise   *promise.Type[T]
+	promise   *promise.Promise[T]
 }
 
 func NewOnceTask[T any](job promise.Job[T]) *Once[T] {
@@ -35,13 +35,13 @@ func (o *Once[T]) Cancel() {
 	o.promise.Cancel()
 }
 
-func (o *Once[T]) DoJob(job promise.Job[T]) *promise.Type[T] {
+func (o *Once[T]) DoJob(job promise.Job[T]) *promise.Promise[T] {
 	o.once.Do(func() {
 		o.promise = promise.NewPromiseWithSemaphore(job, o.Semaphore)
 	})
 	return o.promise
 }
 
-func (o *Once[T]) Do() *promise.Type[T] {
+func (o *Once[T]) Do() *promise.Promise[T] {
 	return o.DoJob(o.Job)
 }

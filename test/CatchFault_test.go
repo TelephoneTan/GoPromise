@@ -7,7 +7,7 @@ import (
 )
 
 func TestCatchFault(t *testing.T) {
-	trigger := (&promise.Type[any]{
+	trigger := (&promise.Promise[any]{
 		Job: promise.Job[any]{
 			Do: func(rs promise.Resolver[any], re promise.Rejector) {
 				b := make([]byte, 1)

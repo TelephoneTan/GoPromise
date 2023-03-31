@@ -54,7 +54,7 @@ func TestTimedTask(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		task0Promise = task0.Start()
 	}
-	(&promise.Type[any]{
+	(&promise.Promise[any]{
 		Job: promise.Job[any]{
 			Do: func(rs promise.Resolver[any], re promise.Rejector) {
 				time.Sleep(9 * time.Second)

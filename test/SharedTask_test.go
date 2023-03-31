@@ -17,7 +17,7 @@ func TestSharedTask(t *testing.T) {
 			},
 		},
 	}).Init()
-	var all []*promise.Type[any]
+	var all []*promise.Promise[any]
 	(&task.Timed{
 		Job: promise.Job[bool]{
 			Do: func(rs promise.Resolver[bool], re promise.Rejector) {

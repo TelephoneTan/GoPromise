@@ -40,10 +40,10 @@ func init() {
 		)
 }
 
-func launch[T any](all []*promise.Type[T], n int, semaphore *promise.Semaphore, name string) []*promise.Type[T] {
+func launch[T any](all []*promise.Promise[T], n int, semaphore *promise.Semaphore, name string) []*promise.Promise[T] {
 	for i := 0; i < n; i++ {
 		ii := i
-		makeStr := (&promise.Type[string]{
+		makeStr := (&promise.Promise[string]{
 			Semaphore: semaphore,
 			Job: promise.Job[string]{
 				Do: func(resolver promise.Resolver[string], rejector promise.Rejector) {
@@ -68,13 +68,13 @@ func launch[T any](all []*promise.Type[T], n int, semaphore *promise.Semaphore, 
 }
 
 func TestMultipleSemaphore(t *testing.T) {
-	var all []*promise.Type[string]
+	var all []*promise.Promise[string]
 	all = launch(all, 10, &hostA, "hostA")
 	all = launch(all, 10, &hostB, "hostB")
 	all = launch(all, 10, &userA, "userA")
 	all = launch(all, 10, &userB, "userB")
 	promise.FinallyRequired[any](promise.SettledListener[any]{
-		OnSettled: func() *promise.Type[any] {
+		OnSettled: func() *promise.Promise[any] {
 			println("结束了")
 			return nil
 		},

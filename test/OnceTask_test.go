@@ -16,7 +16,7 @@ func TestOnceTask(t *testing.T) {
 			},
 		},
 	}).Init()
-	var allWork []*promise.Type[any]
+	var allWork []*promise.Promise[any]
 	for i := 0; i < 100000; i++ {
 		allWork = append(allWork, promise.Then(task0.Do(), promise.FulfilledListener[string, any]{
 			OnFulfilled: func(v *string) any {

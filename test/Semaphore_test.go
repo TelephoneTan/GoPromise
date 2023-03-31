@@ -13,12 +13,12 @@ func TestSemaphore(t *testing.T) {
 }
 
 func testN(n uint64) {
-	var allWork []*promise.Type[any]
+	var allWork []*promise.Promise[any]
 	semaphore := new(promise.Semaphore).Init(n)
 	var counter atomic.Uint64
 	for i := 0; i < 100; i++ {
 		ii := i
-		allWork = append(allWork, (&promise.Type[any]{
+		allWork = append(allWork, (&promise.Promise[any]{
 			Semaphore: semaphore,
 			Job: promise.Job[any]{
 				Do: func(rs promise.Resolver[any], re promise.Rejector) {

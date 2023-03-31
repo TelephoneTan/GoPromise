@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type Type[T any] struct {
+type Promise[T any] struct {
 	value     *T
 	succeeded bool
 	reason    error
@@ -21,7 +21,7 @@ type Type[T any] struct {
 	Job       Job[T]
 }
 
-func (t *Type[T]) init(wrapJobWithSemaphore bool, start bool) *Type[T] {
+func (t *Promise[T]) init(wrapJobWithSemaphore bool, start bool) *Promise[T] {
 	if start {
 		defer t.start(wrapJobWithSemaphore)
 	}
@@ -29,11 +29,11 @@ func (t *Type[T]) init(wrapJobWithSemaphore bool, start bool) *Type[T] {
 	return t
 }
 
-func (t *Type[T]) Init() *Type[T] {
+func (t *Promise[T]) Init() *Promise[T] {
 	return t.init(true, true)
 }
 
-func (t *Type[T]) settle(assign func()) (ok bool) {
+func (t *Promise[T]) settle(assign func()) (ok bool) {
 	t.settleIt.Do(func() {
 		ok = true
 		assign()
@@ -45,7 +45,7 @@ func (t *Type[T]) settle(assign func()) (ok bool) {
 	return ok
 }
 
-func (t *Type[T]) succeed(value *T) *Type[T] {
+func (t *Promise[T]) succeed(value *T) *Promise[T] {
 	t.settle(func() {
 		t.value = value
 		t.succeeded = true
@@ -53,7 +53,7 @@ func (t *Type[T]) succeed(value *T) *Type[T] {
 	return t
 }
 
-func (t *Type[T]) fail(reason error) *Type[T] {
+func (t *Promise[T]) fail(reason error) *Promise[T] {
 	t.settle(func() {
 		t.reason = reason
 		t.failed = true
@@ -61,24 +61,24 @@ func (t *Type[T]) fail(reason error) *Type[T] {
 	return t
 }
 
-func (t *Type[T]) Cancel() bool {
+func (t *Promise[T]) Cancel() bool {
 	return t.settle(func() {
 		t.cancelled = true
 	})
 }
 
-func (t *Type[T]) Await() *Type[T] {
+func (t *Promise[T]) Await() *Promise[T] {
 	<-t.settled
 	return t
 }
 
-func AwaitAll[T any](all []*Type[T]) {
+func AwaitAll[T any](all []*Promise[T]) {
 	for _, p := range all {
 		p.Await()
 	}
 }
 
-func (t *Type[T]) TryAwait() bool {
+func (t *Promise[T]) TryAwait() bool {
 	select {
 	case <-t.settled:
 		return true
@@ -87,7 +87,7 @@ func (t *Type[T]) TryAwait() bool {
 	}
 }
 
-func (t *Type[T]) copyStateTo(tt *Type[T]) {
+func (t *Promise[T]) copyStateTo(tt *Promise[T]) {
 	t.Await()
 	if t.cancelled {
 		tt.Cancel()
@@ -100,36 +100,36 @@ func (t *Type[T]) copyStateTo(tt *Type[T]) {
 	}
 }
 
-func (t *Type[T]) Resolve(valueOrPromise any) {
+func (t *Promise[T]) Resolve(valueOrPromise any) {
 	switch x := valueOrPromise.(type) {
 	case nil:
 		t.ResolveValue(nil)
 	case *T:
 		t.ResolveValue(x)
-	case *Type[T]:
+	case *Promise[T]:
 		t.ResolvePromise(x)
 	}
 }
 
-func (t *Type[T]) ResolveValue(value *T) {
+func (t *Promise[T]) ResolveValue(value *T) {
 	t.succeed(value)
 }
 
-func (t *Type[T]) ResolvePromise(promise *Type[T]) {
+func (t *Promise[T]) ResolvePromise(promise *Promise[T]) {
 	go func() {
 		promise.copyStateTo(t)
 	}()
 }
 
-func (t *Type[T]) cancel() {
+func (t *Promise[T]) cancel() {
 	t.Cancel()
 }
 
-func (t *Type[T]) Reject(e error) {
+func (t *Promise[T]) Reject(e error) {
 	t.fail(e)
 }
 
-func (t *Type[T]) start(wrapJobWithSemaphore bool) {
+func (t *Promise[T]) start(wrapJobWithSemaphore bool) {
 	if t.Job.Do != nil {
 		go func() {
 			debug.SetPanicOnFault(true)
@@ -155,7 +155,7 @@ func (t *Type[T]) start(wrapJobWithSemaphore bool) {
 	}
 }
 
-func (t *Type[T]) SetTimeout(d time.Duration, onTimeOut ...*TimeOutListener) *Type[T] {
+func (t *Promise[T]) SetTimeout(d time.Duration, onTimeOut ...*TimeOutListener) *Promise[T] {
 	if t.TryAwait() {
 		return t
 	}
@@ -168,7 +168,7 @@ func (t *Type[T]) SetTimeout(d time.Duration, onTimeOut ...*TimeOutListener) *Ty
 	return t
 }
 
-func settleAll[S any](promiseList []*Type[S], cancelledFlag []bool, succeededFlag []bool, value []*S, reason []error) {
+func settleAll[S any](promiseList []*Promise[S], cancelledFlag []bool, succeededFlag []bool, value []*S, reason []error) {
 	for i, promise := range promiseList {
 		promise.Await()
 		if promise.cancelled {
@@ -187,14 +187,14 @@ func settleAll[S any](promiseList []*Type[S], cancelledFlag []bool, succeededFla
 
 func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 	semaphore *Semaphore,
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
 	f *CompoundFulfilledListener[REQUIRED, OPTIONAL, SUPPLY],
 	r *RejectedListener[SUPPLY],
 	s *SettledListener[T],
 	c *CancelledListener,
-) *Type[SUPPLY] {
-	return (&Type[SUPPLY]{
+) *Promise[SUPPLY] {
+	return (&Promise[SUPPLY]{
 		Semaphore: semaphore,
 		Job: Job[SUPPLY]{
 			Do: func(resolver Resolver[SUPPLY], rejector Rejector) {
@@ -266,7 +266,7 @@ func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 							})
 							if res == nil {
 								resolver.ResolveValue(nil)
-							} else if resP, ok := res.(*Type[SUPPLY]); ok {
+							} else if resP, ok := res.(*Promise[SUPPLY]); ok {
 								resolver.ResolvePromise(resP)
 							} else {
 								resolver.ResolveValue(res.(*SUPPLY))
@@ -279,7 +279,7 @@ func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 							res := r.OnRejected(reason)
 							if res == nil {
 								resolver.ResolveValue(nil)
-							} else if resP, ok := res.(*Type[SUPPLY]); ok {
+							} else if resP, ok := res.(*Promise[SUPPLY]); ok {
 								resolver.ResolvePromise(resP)
 							} else {
 								resolver.ResolveValue(res.(*SUPPLY))
@@ -295,9 +295,9 @@ func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 func ThenAllSemaphore[SUPPLY any, REQUIRED any, OPTIONAL any](
 	semaphore *Semaphore,
 	onFulfilled CompoundFulfilledListener[REQUIRED, OPTIONAL, SUPPLY],
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return dependOn[REQUIRED, OPTIONAL, SUPPLY, any](
 		semaphore,
 		requiredPromise,
@@ -311,32 +311,32 @@ func ThenAllSemaphore[SUPPLY any, REQUIRED any, OPTIONAL any](
 
 func ThenAll[SUPPLY any, REQUIRED any, OPTIONAL any](
 	onFulfilled CompoundFulfilledListener[REQUIRED, OPTIONAL, SUPPLY],
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return ThenAllSemaphore(nil, onFulfilled, requiredPromise, optionalPromise)
 }
 
 func ThenRequiredSemaphore[SUPPLY any, NEED any](
 	semaphore *Semaphore,
 	onFulfilled CompoundFulfilledListener[NEED, any, SUPPLY],
-	requiredPromise []*Type[NEED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[NEED],
+) *Promise[SUPPLY] {
 	return ThenAllSemaphore(semaphore, onFulfilled, requiredPromise, nil)
 }
 
 func ThenRequired[SUPPLY any, NEED any](
 	onFulfilled CompoundFulfilledListener[NEED, any, SUPPLY],
-	requiredPromise []*Type[NEED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[NEED],
+) *Promise[SUPPLY] {
 	return ThenRequiredSemaphore(nil, onFulfilled, requiredPromise)
 }
 
 func ThenSemaphore[SUPPLY any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	semaphore *Semaphore,
 	onFulfilled FulfilledListener[NEED, SUPPLY],
-) *Type[SUPPLY] {
+) *Promise[SUPPLY] {
 	return ThenRequiredSemaphore(semaphore, CompoundFulfilledListener[NEED, any, SUPPLY]{
 		OnFulfilled: func(cv *CompoundResult[NEED, any]) (res any) {
 			if onFulfilled.OnFulfilled != nil {
@@ -344,22 +344,22 @@ func ThenSemaphore[SUPPLY any, NEED any](
 			}
 			return res
 		},
-	}, []*Type[NEED]{promise})
+	}, []*Promise[NEED]{promise})
 }
 
 func Then[SUPPLY any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	onFulfilled FulfilledListener[NEED, SUPPLY],
-) *Type[SUPPLY] {
+) *Promise[SUPPLY] {
 	return ThenSemaphore(promise, nil, onFulfilled)
 }
 
 func CatchAllSemaphore[SUPPLY any, REQUIRED any, OPTIONAL any](
 	semaphore *Semaphore,
 	onRejected RejectedListener[SUPPLY],
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return dependOn[REQUIRED, OPTIONAL, SUPPLY, any](
 		semaphore,
 		requiredPromise,
@@ -373,48 +373,48 @@ func CatchAllSemaphore[SUPPLY any, REQUIRED any, OPTIONAL any](
 
 func CatchAll[SUPPLY any, REQUIRED any, OPTIONAL any](
 	onRejected RejectedListener[SUPPLY],
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return CatchAllSemaphore(nil, onRejected, requiredPromise, optionalPromise)
 }
 
 func CatchRequiredSemaphore[SUPPLY any, REQUIRED any](
 	semaphore *Semaphore,
 	onRejected RejectedListener[SUPPLY],
-	requiredPromise []*Type[REQUIRED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+) *Promise[SUPPLY] {
 	return CatchAllSemaphore[SUPPLY, REQUIRED, any](semaphore, onRejected, requiredPromise, nil)
 }
 
 func CatchRequired[SUPPLY any, REQUIRED any](
 	onRejected RejectedListener[SUPPLY],
-	requiredPromise []*Type[REQUIRED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+) *Promise[SUPPLY] {
 	return CatchRequiredSemaphore(nil, onRejected, requiredPromise)
 }
 
 func CatchSemaphore[SUPPLY any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	semaphore *Semaphore,
 	onRejected RejectedListener[SUPPLY],
-) *Type[SUPPLY] {
-	return CatchRequiredSemaphore(semaphore, onRejected, []*Type[NEED]{promise})
+) *Promise[SUPPLY] {
+	return CatchRequiredSemaphore(semaphore, onRejected, []*Promise[NEED]{promise})
 }
 
 func Catch[SUPPLY any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	onRejected RejectedListener[SUPPLY],
-) *Type[SUPPLY] {
+) *Promise[SUPPLY] {
 	return CatchSemaphore(promise, nil, onRejected)
 }
 
 func ForCancelAllSemaphore[SUPPLY any, REQUIRED any, OPTIONAL any](
 	semaphore *Semaphore,
 	onCancelled CancelledListener,
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return dependOn[REQUIRED, OPTIONAL, SUPPLY, any](
 		semaphore,
 		requiredPromise,
@@ -428,48 +428,48 @@ func ForCancelAllSemaphore[SUPPLY any, REQUIRED any, OPTIONAL any](
 
 func ForCancelAll[SUPPLY any, REQUIRED any, OPTIONAL any](
 	onCancelled CancelledListener,
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return ForCancelAllSemaphore[SUPPLY, REQUIRED, OPTIONAL](nil, onCancelled, requiredPromise, optionalPromise)
 }
 
 func ForCancelRequiredSemaphore[SUPPLY any, REQUIRED any](
 	semaphore *Semaphore,
 	onCancelled CancelledListener,
-	requiredPromise []*Type[REQUIRED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+) *Promise[SUPPLY] {
 	return ForCancelAllSemaphore[SUPPLY, REQUIRED, any](semaphore, onCancelled, requiredPromise, nil)
 }
 
 func ForCancelRequired[SUPPLY any, REQUIRED any](
 	onCancelled CancelledListener,
-	requiredPromise []*Type[REQUIRED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+) *Promise[SUPPLY] {
 	return ForCancelRequiredSemaphore[SUPPLY, REQUIRED](nil, onCancelled, requiredPromise)
 }
 
 func ForCancelSemaphore[SUPPLY any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	semaphore *Semaphore,
 	onCancelled CancelledListener,
-) *Type[SUPPLY] {
-	return ForCancelRequiredSemaphore[SUPPLY, NEED](semaphore, onCancelled, []*Type[NEED]{promise})
+) *Promise[SUPPLY] {
+	return ForCancelRequiredSemaphore[SUPPLY, NEED](semaphore, onCancelled, []*Promise[NEED]{promise})
 }
 
 func ForCancel[SUPPLY any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	onCancelled CancelledListener,
-) *Type[SUPPLY] {
+) *Promise[SUPPLY] {
 	return ForCancelSemaphore[SUPPLY, NEED](promise, nil, onCancelled)
 }
 
 func FinallyAllSemaphore[SUPPLY any, T any, REQUIRED any, OPTIONAL any](
 	semaphore *Semaphore,
 	onFinally SettledListener[T],
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return dependOn[REQUIRED, OPTIONAL, SUPPLY, T](
 		semaphore,
 		requiredPromise,
@@ -483,60 +483,60 @@ func FinallyAllSemaphore[SUPPLY any, T any, REQUIRED any, OPTIONAL any](
 
 func FinallyAll[SUPPLY any, T any, REQUIRED any, OPTIONAL any](
 	onFinally SettledListener[T],
-	requiredPromise []*Type[REQUIRED],
-	optionalPromise []*Type[OPTIONAL],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+	optionalPromise []*Promise[OPTIONAL],
+) *Promise[SUPPLY] {
 	return FinallyAllSemaphore[SUPPLY, T, REQUIRED, OPTIONAL](nil, onFinally, requiredPromise, optionalPromise)
 }
 
 func FinallyRequiredSemaphore[SUPPLY any, T any, REQUIRED any](
 	semaphore *Semaphore,
 	onFinally SettledListener[T],
-	requiredPromise []*Type[REQUIRED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+) *Promise[SUPPLY] {
 	return FinallyAllSemaphore[SUPPLY, T, REQUIRED, any](semaphore, onFinally, requiredPromise, nil)
 }
 
 func FinallyRequired[SUPPLY any, T any, REQUIRED any](
 	onFinally SettledListener[T],
-	requiredPromise []*Type[REQUIRED],
-) *Type[SUPPLY] {
+	requiredPromise []*Promise[REQUIRED],
+) *Promise[SUPPLY] {
 	return FinallyRequiredSemaphore[SUPPLY, T, REQUIRED](nil, onFinally, requiredPromise)
 }
 
 func FinallySemaphore[SUPPLY any, T any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	semaphore *Semaphore,
 	onFinally SettledListener[T],
-) *Type[SUPPLY] {
-	return FinallyRequiredSemaphore[SUPPLY, T, NEED](semaphore, onFinally, []*Type[NEED]{promise})
+) *Promise[SUPPLY] {
+	return FinallyRequiredSemaphore[SUPPLY, T, NEED](semaphore, onFinally, []*Promise[NEED]{promise})
 }
 
 func Finally[SUPPLY any, T any, NEED any](
-	promise *Type[NEED],
+	promise *Promise[NEED],
 	onFinally SettledListener[T],
-) *Type[SUPPLY] {
+) *Promise[SUPPLY] {
 	return FinallySemaphore[SUPPLY, T, NEED](promise, nil, onFinally)
 }
 
-func Resolve[T any](value *T) *Type[T] {
-	return (&Type[T]{}).init(false, false).succeed(value)
+func Resolve[T any](value *T) *Promise[T] {
+	return (&Promise[T]{}).init(false, false).succeed(value)
 }
 
-func Reject[SUPPLY any](reason error) *Type[SUPPLY] {
-	return (&Type[SUPPLY]{}).init(false, false).fail(reason)
+func Reject[SUPPLY any](reason error) *Promise[SUPPLY] {
+	return (&Promise[SUPPLY]{}).init(false, false).fail(reason)
 }
 
-func Cancelled[SUPPLY any]() *Type[SUPPLY] {
-	promise := (&Type[SUPPLY]{}).init(false, false)
+func Cancelled[SUPPLY any]() *Promise[SUPPLY] {
+	promise := (&Promise[SUPPLY]{}).init(false, false)
 	promise.Cancel()
 	return promise
 }
 
-func NewPromise[T any](job Job[T]) *Type[T] {
-	return (&Type[T]{Job: job}).Init()
+func NewPromise[T any](job Job[T]) *Promise[T] {
+	return (&Promise[T]{Job: job}).Init()
 }
 
-func NewPromiseWithSemaphore[T any](job Job[T], semaphore *Semaphore) *Type[T] {
-	return (&Type[T]{Job: job, Semaphore: semaphore}).Init()
+func NewPromiseWithSemaphore[T any](job Job[T], semaphore *Semaphore) *Promise[T] {
+	return (&Promise[T]{Job: job, Semaphore: semaphore}).Init()
 }
