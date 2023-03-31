@@ -8,7 +8,7 @@ import (
 func TestCancelled(t *testing.T) {
 	p := promise.Cancelled[string]()
 	p = promise.Then(p, promise.FulfilledListener[string, string]{
-		OnFulfilled: func(value *string) any {
+		OnFulfilled: func(value string) any {
 			println("hello, world")
 			return nil
 		},

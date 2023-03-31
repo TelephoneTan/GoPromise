@@ -54,7 +54,7 @@ func (t *Timed) Init(interval time.Duration, times ...int64) *Timed {
 				<-t.archived
 				select {
 				case st := <-t.succeeded:
-					rs.ResolveValue(&st)
+					rs.ResolveValue(st)
 				case e := <-t.failed:
 					re.Reject(e)
 				case <-t.cancelled:
@@ -153,7 +153,7 @@ func (t *Timed) prepare() *promise.Promise[any] {
 				select {
 				case v := <-t.token:
 					t.token <- timedToken{}
-					rs.ResolveValue(&v)
+					rs.ResolveValue(v)
 				case <-t.archived:
 					panic(archivedTip)
 				}
@@ -161,17 +161,17 @@ func (t *Timed) prepare() *promise.Promise[any] {
 		},
 	}).Init()
 	checkAlive := promise.Then(resume, promise.FulfilledListener[timedToken, timedToken]{
-		OnFulfilled: func(token *timedToken) any {
+		OnFulfilled: func(token timedToken) any {
 			checkAlive := t.checkAlive(false)
 			return promise.Then(checkAlive, promise.FulfilledListener[any, timedToken]{
-				OnFulfilled: func(_ *any) any {
+				OnFulfilled: func(_ any) any {
 					return token
 				},
 			})
 		},
 	})
 	delay := promise.Then(checkAlive, promise.FulfilledListener[timedToken, any]{
-		OnFulfilled: func(token *timedToken) any {
+		OnFulfilled: func(token timedToken) any {
 			if token.delay != nil {
 				time.Sleep(*token.delay)
 			}
@@ -179,7 +179,7 @@ func (t *Timed) prepare() *promise.Promise[any] {
 		},
 	})
 	return promise.Then(delay, promise.FulfilledListener[any, any]{
-		OnFulfilled: func(_ *any) any {
+		OnFulfilled: func(_ any) any {
 			return t.checkAlive(true)
 		},
 	})
@@ -188,7 +188,7 @@ func (t *Timed) prepare() *promise.Promise[any] {
 func (t *Timed) run() {
 	prepare := t.prepare()
 	execute := promise.Then(prepare, promise.FulfilledListener[any, bool]{
-		OnFulfilled: func(_ *any) any {
+		OnFulfilled: func(_ any) any {
 			return (&promise.Promise[bool]{
 				Job:       t.Job,
 				Semaphore: t.Semaphore,
@@ -196,14 +196,14 @@ func (t *Timed) run() {
 		},
 	})
 	recordSuccess := promise.Then(execute, promise.FulfilledListener[bool, bool]{
-		OnFulfilled: func(res *bool) any {
+		OnFulfilled: func(res bool) any {
 			t.succeededTimes.Add(1)
 			return res
 		},
 	})
 	judgeResult := promise.Then(recordSuccess, promise.FulfilledListener[bool, any]{
-		OnFulfilled: func(res *bool) any {
-			if res != nil && !(*res) {
+		OnFulfilled: func(res bool) any {
+			if !res {
 				t.end()
 				panic("提前结束了")
 			}
@@ -211,12 +211,12 @@ func (t *Timed) run() {
 		},
 	})
 	checkAlive := promise.Then(judgeResult, promise.FulfilledListener[any, any]{
-		OnFulfilled: func(_ *any) any {
+		OnFulfilled: func(_ any) any {
 			return t.checkAlive(false)
 		},
 	})
 	delay := promise.Then(checkAlive, promise.FulfilledListener[any, any]{
-		OnFulfilled: func(_ *any) any {
+		OnFulfilled: func(_ any) any {
 			d := t.interval.Load()
 			if d != nil {
 				time.Sleep(*d)
@@ -225,12 +225,12 @@ func (t *Timed) run() {
 		},
 	})
 	checkAlive = promise.Then(delay, promise.FulfilledListener[any, any]{
-		OnFulfilled: func(_ *any) any {
+		OnFulfilled: func(_ any) any {
 			return t.checkAlive(false)
 		},
 	})
 	nextTask := promise.Then(checkAlive, promise.FulfilledListener[any, any]{
-		OnFulfilled: func(_ *any) any {
+		OnFulfilled: func(_ any) any {
 			t.run()
 			return nil
 		},
@@ -292,12 +292,12 @@ func (t *Timed) AddTimesBy(delta int64) *promise.Promise[int64] {
 	} else if delta < 0 {
 		return promise.Reject[int64](errors.New("增加的次数不能小于 0"))
 	} else if delta == 0 {
-		return promise.Resolve(&delta)
+		return promise.Resolve(delta)
 	} else {
 		return modify(t, promise.Job[int64]{
 			Do: func(rs promise.Resolver[int64], re promise.Rejector) {
 				t.lifeTimes.Add(delta)
-				rs.ResolveValue(&delta)
+				rs.ResolveValue(delta)
 			},
 		})
 	}
@@ -309,7 +309,7 @@ func (t *Timed) ReduceTimeBy(delta int64) *promise.Promise[int64] {
 	} else if delta < 0 {
 		return promise.Reject[int64](errors.New("减少的次数不能小于 0"))
 	} else if delta == 0 {
-		return promise.Resolve(&delta)
+		return promise.Resolve(delta)
 	} else {
 		return modify(t, promise.Job[int64]{
 			Do: func(rs promise.Resolver[int64], re promise.Rejector) {
@@ -321,7 +321,7 @@ func (t *Timed) ReduceTimeBy(delta int64) *promise.Promise[int64] {
 					rd = current
 				}
 				t.lifeTimes.Store(current - rd)
-				rs.ResolveValue(&rd)
+				rs.ResolveValue(rd)
 			},
 		})
 	}

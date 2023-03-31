@@ -9,7 +9,7 @@ import (
 )
 
 type Promise[T any] struct {
-	value     *T
+	value     T
 	succeeded bool
 	reason    error
 	failed    bool
@@ -45,7 +45,7 @@ func (t *Promise[T]) settle(assign func()) (ok bool) {
 	return ok
 }
 
-func (t *Promise[T]) succeed(value *T) *Promise[T] {
+func (t *Promise[T]) succeed(value T) *Promise[T] {
 	t.settle(func() {
 		t.value = value
 		t.succeeded = true
@@ -103,15 +103,15 @@ func (t *Promise[T]) copyStateTo(tt *Promise[T]) {
 func (t *Promise[T]) Resolve(valueOrPromise any) {
 	switch x := valueOrPromise.(type) {
 	case nil:
-		t.ResolveValue(nil)
-	case *T:
+		t.ResolveValue(*new(T))
+	case T:
 		t.ResolveValue(x)
 	case *Promise[T]:
 		t.ResolvePromise(x)
 	}
 }
 
-func (t *Promise[T]) ResolveValue(value *T) {
+func (t *Promise[T]) ResolveValue(value T) {
 	t.succeed(value)
 }
 
@@ -168,7 +168,7 @@ func (t *Promise[T]) SetTimeout(d time.Duration, onTimeOut ...*TimeOutListener) 
 	return t
 }
 
-func settleAll[S any](promiseList []*Promise[S], cancelledFlag []bool, succeededFlag []bool, value []*S, reason []error) {
+func settleAll[S any](promiseList []*Promise[S], cancelledFlag []bool, succeededFlag []bool, value []S, reason []error) {
 	for i, promise := range promiseList {
 		promise.Await()
 		if promise.cancelled {
@@ -199,14 +199,14 @@ func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 		Job: Job[SUPPLY]{
 			Do: func(resolver Resolver[SUPPLY], rejector Rejector) {
 				requiredNum := len(requiredPromise)
-				requiredValue := make([]*REQUIRED, requiredNum)
+				requiredValue := make([]REQUIRED, requiredNum)
 				requiredReason := make([]error, requiredNum)
 				requiredCancelledFlag := make([]bool, requiredNum)
 				requiredSucceededFlag := make([]bool, requiredNum)
 				settleAll(requiredPromise, requiredCancelledFlag, requiredSucceededFlag, requiredValue, requiredReason)
 				//
 				optionalNum := len(optionalPromise)
-				optionalValue := make([]*OPTIONAL, optionalNum)
+				optionalValue := make([]OPTIONAL, optionalNum)
 				optionalReason := make([]error, optionalNum)
 				optionalCancelledFlag := make([]bool, optionalNum)
 				optionalSucceededFlag := make([]bool, optionalNum)
@@ -255,7 +255,7 @@ func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 				if !cancelled {
 					if succeeded {
 						if f == nil || f.OnFulfilled == nil {
-							resolver.ResolveValue(nil)
+							resolver.ResolveValue(*new(SUPPLY))
 						} else {
 							res := f.OnFulfilled(&CompoundResult[REQUIRED, OPTIONAL]{
 								RequiredValue:         requiredValue,
@@ -265,11 +265,11 @@ func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 								OptionalSucceededFlag: optionalSucceededFlag,
 							})
 							if res == nil {
-								resolver.ResolveValue(nil)
+								resolver.ResolveValue(*new(SUPPLY))
 							} else if resP, ok := res.(*Promise[SUPPLY]); ok {
 								resolver.ResolvePromise(resP)
 							} else {
-								resolver.ResolveValue(res.(*SUPPLY))
+								resolver.ResolveValue(res.(SUPPLY))
 							}
 						}
 					} else {
@@ -278,11 +278,11 @@ func dependOn[REQUIRED any, OPTIONAL any, SUPPLY any, T any](
 						} else {
 							res := r.OnRejected(reason)
 							if res == nil {
-								resolver.ResolveValue(nil)
+								resolver.ResolveValue(*new(SUPPLY))
 							} else if resP, ok := res.(*Promise[SUPPLY]); ok {
 								resolver.ResolvePromise(resP)
 							} else {
-								resolver.ResolveValue(res.(*SUPPLY))
+								resolver.ResolveValue(res.(SUPPLY))
 							}
 						}
 					}
@@ -519,7 +519,7 @@ func Finally[SUPPLY any, T any, NEED any](
 	return FinallySemaphore[SUPPLY, T, NEED](promise, nil, onFinally)
 }
 
-func Resolve[T any](value *T) *Promise[T] {
+func Resolve[T any](value T) *Promise[T] {
 	return (&Promise[T]{}).init(false, false).succeed(value)
 }
 

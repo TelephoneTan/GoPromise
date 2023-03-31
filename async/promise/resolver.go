@@ -2,6 +2,6 @@ package promise
 
 type Resolver[T any] interface {
 	Resolve(valueOrPromise any)
-	ResolveValue(value *T)
+	ResolveValue(value T)
 	ResolvePromise(promise *Promise[T])
 }

@@ -19,7 +19,7 @@ func TestPromise(t *testing.T) {
 		p := promise.NewPromiseWithSemaphore(promise.Job[string]{
 			Do: func(resolver promise.Resolver[string], rejector promise.Rejector) {
 				time.Sleep(interval)
-				resolver.ResolveValue(nil)
+				resolver.ResolveValue("")
 			},
 		}, semaphore)
 		allWork = append(allWork, p)
@@ -29,15 +29,14 @@ func TestPromise(t *testing.T) {
 			fmt.Printf("任务 %d 已超时（%f s）\n", ii, duration.Seconds())
 		}})
 		p = promise.Then(p, promise.FulfilledListener[string, string]{
-			OnFulfilled: func(value *string) any {
-				s := fmt.Sprintf("%d -> x = %d", ii, x.Add(1))
-				return &s
+			OnFulfilled: func(value string) any {
+				return fmt.Sprintf("%d -> x = %d", ii, x.Add(1))
 			},
 		})
 		allWork = append(allWork, p)
 		p = promise.Then(p, promise.FulfilledListener[string, string]{
-			OnFulfilled: func(value *string) any {
-				println(*value)
+			OnFulfilled: func(value string) any {
+				println(value)
 				return nil
 			},
 		})

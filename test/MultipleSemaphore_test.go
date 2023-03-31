@@ -3,7 +3,6 @@ package test
 import (
 	"fmt"
 	"github.com/TelephoneTan/GoPromise/async/promise"
-	"github.com/TelephoneTan/GoPromise/util"
 	"testing"
 	"time"
 )
@@ -49,16 +48,14 @@ func launch[T any](all []*promise.Promise[T], n int, semaphore *promise.Semaphor
 				Do: func(resolver promise.Resolver[string], rejector promise.Rejector) {
 					time.Sleep(5 * time.Second)
 					resolver.ResolveValue(
-						util.Ptr(
-							fmt.Sprintf("%s %d -> %s", name, ii, time.Now().String()),
-						),
+						fmt.Sprintf("%s %d -> %s", name, ii, time.Now().String()),
 					)
 				},
 			},
 		}).Init()
 		printStr := promise.Then(makeStr, promise.FulfilledListener[string, T]{
-			OnFulfilled: func(value *string) any {
-				println(*value)
+			OnFulfilled: func(value string) any {
+				println(value)
 				return nil
 			},
 		})
