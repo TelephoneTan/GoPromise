@@ -9,18 +9,18 @@ import (
 )
 
 func TestTimedTask(t *testing.T) {
-	task0 := (&task.Timed{
-		Job: promise.Job[bool]{
+	task0 := task.NewTimedTask(
+		promise.Job[bool]{
 			Do: func(rs promise.Resolver[bool], re promise.Rejector) {
 				println(time.Now().String())
 				rs.ResolveValue(true)
 			},
 		},
-	}).
-		Init(50*time.Millisecond, 152)
-	//Init(50*time.Millisecond, 2)
-	//Init(50*time.Millisecond, 3)
-	//Init(50*time.Millisecond, 4)
+		50*time.Millisecond, 152,
+		//50*time.Millisecond, 2,
+		//50*time.Millisecond, 3,
+		//50*time.Millisecond, 4,
+	)
 	addTimes := task0.AddTimesBy(1)
 	aS := promise.Then(addTimes, promise.FulfilledListener[int64, any]{
 		OnFulfilled: func(v int64) any {
@@ -53,25 +53,23 @@ func TestTimedTask(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		task0Promise = task0.Start()
 	}
-	(&promise.Promise[any]{
-		Job: promise.Job[any]{
-			Do: func(rs promise.Resolver[any], re promise.Rejector) {
-				time.Sleep(9 * time.Second)
-				task0.Pause()
-				println("已暂停")
-				time.Sleep(6 * time.Second)
-				task0.SetInterval(1 * time.Second)
-				println("已更改间隔")
-				d := 5 * time.Second
-				task0.Resume(d)
-				println("已恢复，下一次任务将延迟", d.Seconds(), "秒执行")
-				time.Sleep(10 * time.Second)
-				task0.Cancel()
-				println("已取消")
-				rs.ResolveValue(nil)
-			},
+	promise.NewPromise(promise.Job[any]{
+		Do: func(rs promise.Resolver[any], re promise.Rejector) {
+			time.Sleep(9 * time.Second)
+			task0.Pause()
+			println("已暂停")
+			time.Sleep(6 * time.Second)
+			task0.SetInterval(1 * time.Second)
+			println("已更改间隔")
+			d := 5 * time.Second
+			task0.Resume(d)
+			println("已恢复，下一次任务将延迟", d.Seconds(), "秒执行")
+			time.Sleep(10 * time.Second)
+			task0.Cancel()
+			println("已取消")
+			rs.ResolveValue(nil)
 		},
-	}).Init()
+	})
 	tS := promise.Then(task0Promise, promise.FulfilledListener[int64, any]{
 		OnFulfilled: func(v int64) any {
 			println("一共运行了", v, "次")

@@ -14,7 +14,7 @@ type timedToken struct {
 	delay *time.Duration
 }
 
-type Timed struct {
+type _Timed struct {
 	interval       atomic.Pointer[time.Duration]
 	lifeLimited    bool
 	lifeTimes      atomic.Int64
@@ -26,14 +26,24 @@ type Timed struct {
 	succeeded      chan int64
 	failed         chan error
 	cancelled      line
-	promise        *promise.Promise[int64]
+	promise        promise.Promise[int64]
 	start          sync.Once
 	//
 	Job       promise.Job[bool]
-	Semaphore *promise.Semaphore
+	Semaphore promise.Semaphore
 }
 
-func (t *Timed) Init(interval time.Duration, times ...int64) *Timed {
+type Timed = *_Timed
+
+func NewTimedTask(job promise.Job[bool], interval time.Duration, times ...int64) Timed {
+	return (&_Timed{Job: job}).init(interval, times...)
+}
+
+func NewTimedTaskWithSemaphore(job promise.Job[bool], semaphore promise.Semaphore, interval time.Duration, times ...int64) Timed {
+	return (&_Timed{Job: job, Semaphore: semaphore}).init(interval, times...)
+}
+
+func (t Timed) init(interval time.Duration, times ...int64) Timed {
 	t.interval.Store(&interval)
 	t.lifeLimited = len(times) > 0
 	if t.lifeLimited {
@@ -48,24 +58,22 @@ func (t *Timed) Init(interval time.Duration, times ...int64) *Timed {
 	t.succeeded = make(chan int64, 1)
 	t.failed = make(chan error, 1)
 	t.cancelled = make(line, 1)
-	t.promise = (&promise.Promise[int64]{
-		Job: promise.Job[int64]{
-			Do: func(rs promise.Resolver[int64], re promise.Rejector) {
-				<-t.archived
-				select {
-				case st := <-t.succeeded:
-					rs.ResolveValue(st)
-				case e := <-t.failed:
-					re.Reject(e)
-				case <-t.cancelled:
-				}
-			},
+	t.promise = promise.NewPromise(promise.Job[int64]{
+		Do: func(rs promise.Resolver[int64], re promise.Rejector) {
+			<-t.archived
+			select {
+			case st := <-t.succeeded:
+				rs.ResolveValue(st)
+			case e := <-t.failed:
+				re.Reject(e)
+			case <-t.cancelled:
+			}
 		},
-	}).Init()
+	})
 	return t
 }
 
-func (t *Timed) IsArchived() bool {
+func (t Timed) IsArchived() bool {
 	select {
 	case <-t.archived:
 		return true
@@ -74,29 +82,27 @@ func (t *Timed) IsArchived() bool {
 	}
 }
 
-func modify[R any](timed *Timed, op promise.Job[R]) *promise.Promise[R] {
-	operate := (&promise.Promise[R]{
-		Job: promise.Job[R]{
-			Do: func(rs promise.Resolver[R], re promise.Rejector) {
-				timed.modifying <- signal
-				if timed.IsArchived() {
-					panic(archivedTip)
-				} else {
-					op.Do(rs, re)
-				}
-			},
+func modify[R any](timed Timed, op promise.Job[R]) promise.Promise[R] {
+	operate := promise.NewPromise(promise.Job[R]{
+		Do: func(rs promise.Resolver[R], re promise.Rejector) {
+			timed.modifying <- signal
+			if timed.IsArchived() {
+				panic(archivedTip)
+			} else {
+				op.Do(rs, re)
+			}
 		},
-	}).Init()
+	})
 	promise.Finally[R](operate, promise.SettledListener[any]{
-		OnSettled: func() *promise.Promise[any] {
+		OnSettled: func() promise.Promise[any] {
 			<-timed.modifying
-			return nil
+			return promise.Promise[any]{}
 		},
 	})
 	return operate
 }
 
-func (t *Timed) end() {
+func (t Timed) end() {
 	modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			t.succeeded <- t.succeededTimes.Load()
@@ -106,7 +112,7 @@ func (t *Timed) end() {
 	})
 }
 
-func (t *Timed) error(e error) {
+func (t Timed) error(e error) {
 	modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			t.failed <- e
@@ -116,7 +122,7 @@ func (t *Timed) error(e error) {
 	})
 }
 
-func (t *Timed) Cancel() *promise.Promise[any] {
+func (t Timed) Cancel() promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			t.cancelled <- signal
@@ -127,7 +133,7 @@ func (t *Timed) Cancel() *promise.Promise[any] {
 	})
 }
 
-func (t *Timed) checkAlive(consumeLife bool) *promise.Promise[any] {
+func (t Timed) checkAlive(consumeLife bool) promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			lt := t.lifeTimes.Load()
@@ -146,20 +152,18 @@ func (t *Timed) checkAlive(consumeLife bool) *promise.Promise[any] {
 	})
 }
 
-func (t *Timed) prepare() *promise.Promise[any] {
-	resume := (&promise.Promise[timedToken]{
-		Job: promise.Job[timedToken]{
-			Do: func(rs promise.Resolver[timedToken], re promise.Rejector) {
-				select {
-				case v := <-t.token:
-					t.token <- timedToken{}
-					rs.ResolveValue(v)
-				case <-t.archived:
-					panic(archivedTip)
-				}
-			},
+func (t Timed) prepare() promise.Promise[any] {
+	resume := promise.NewPromise(promise.Job[timedToken]{
+		Do: func(rs promise.Resolver[timedToken], re promise.Rejector) {
+			select {
+			case v := <-t.token:
+				t.token <- timedToken{}
+				rs.ResolveValue(v)
+			case <-t.archived:
+				panic(archivedTip)
+			}
 		},
-	}).Init()
+	})
 	checkAlive := promise.Then(resume, promise.FulfilledListener[timedToken, timedToken]{
 		OnFulfilled: func(token timedToken) any {
 			checkAlive := t.checkAlive(false)
@@ -185,14 +189,11 @@ func (t *Timed) prepare() *promise.Promise[any] {
 	})
 }
 
-func (t *Timed) run() {
+func (t Timed) run() {
 	prepare := t.prepare()
 	execute := promise.Then(prepare, promise.FulfilledListener[any, bool]{
 		OnFulfilled: func(_ any) any {
-			return (&promise.Promise[bool]{
-				Job:       t.Job,
-				Semaphore: t.Semaphore,
-			}).Init()
+			return promise.NewPromiseWithSemaphore(t.Job, t.Semaphore)
 		},
 	})
 	recordSuccess := promise.Then(execute, promise.FulfilledListener[bool, bool]{
@@ -243,7 +244,7 @@ func (t *Timed) run() {
 	})
 }
 
-func (t *Timed) Pause() *promise.Promise[any] {
+func (t Timed) Pause() promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			select {
@@ -257,7 +258,7 @@ func (t *Timed) Pause() *promise.Promise[any] {
 	})
 }
 
-func (t *Timed) Resume(delay ...time.Duration) *promise.Promise[any] {
+func (t Timed) Resume(delay ...time.Duration) promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			select {
@@ -277,7 +278,7 @@ func (t *Timed) Resume(delay ...time.Duration) *promise.Promise[any] {
 	})
 }
 
-func (t *Timed) SetInterval(interval time.Duration) *promise.Promise[any] {
+func (t Timed) SetInterval(interval time.Duration) promise.Promise[any] {
 	return modify(t, promise.Job[any]{
 		Do: func(rs promise.Resolver[any], re promise.Rejector) {
 			t.interval.Store(&interval)
@@ -286,7 +287,7 @@ func (t *Timed) SetInterval(interval time.Duration) *promise.Promise[any] {
 	})
 }
 
-func (t *Timed) AddTimesBy(delta int64) *promise.Promise[int64] {
+func (t Timed) AddTimesBy(delta int64) promise.Promise[int64] {
 	if !t.lifeLimited {
 		return promise.Reject[int64](errors.New("该定时任务无固定运行次数"))
 	} else if delta < 0 {
@@ -303,7 +304,7 @@ func (t *Timed) AddTimesBy(delta int64) *promise.Promise[int64] {
 	}
 }
 
-func (t *Timed) ReduceTimeBy(delta int64) *promise.Promise[int64] {
+func (t Timed) ReduceTimeBy(delta int64) promise.Promise[int64] {
 	if !t.lifeLimited {
 		return promise.Reject[int64](errors.New("该定时任务无固定运行次数"))
 	} else if delta < 0 {
@@ -327,17 +328,15 @@ func (t *Timed) ReduceTimeBy(delta int64) *promise.Promise[int64] {
 	}
 }
 
-func (t *Timed) Start(delay ...time.Duration) *promise.Promise[int64] {
+func (t Timed) Start(delay ...time.Duration) promise.Promise[int64] {
 	t.start.Do(func() {
-		start := (&promise.Promise[any]{
-			Job: promise.Job[any]{
-				Do: func(rs promise.Resolver[any], re promise.Rejector) {
-					t.run()
-					t.block <- timedToken{}
-					rs.ResolvePromise(t.Resume(delay...))
-				},
+		start := promise.NewPromise(promise.Job[any]{
+			Do: func(rs promise.Resolver[any], re promise.Rejector) {
+				t.run()
+				t.block <- timedToken{}
+				rs.ResolvePromise(t.Resume(delay...))
 			},
-		}).Init()
+		})
 		promise.Catch(start, promise.RejectedListener[any]{
 			OnRejected: func(reason error) any {
 				t.error(reason)

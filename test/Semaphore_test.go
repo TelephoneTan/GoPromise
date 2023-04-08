@@ -13,30 +13,27 @@ func TestSemaphore(t *testing.T) {
 }
 
 func testN(n uint64) {
-	var allWork []*promise.Promise[any]
-	semaphore := new(promise.Semaphore).Init(n)
+	var allWork []promise.Promise[any]
+	semaphore := promise.NewSemaphore(n)
 	var counter atomic.Uint64
 	for i := 0; i < 100; i++ {
 		ii := i
-		allWork = append(allWork, (&promise.Promise[any]{
-			Semaphore: semaphore,
-			Job: promise.Job[any]{
-				Do: func(rs promise.Resolver[any], re promise.Rejector) {
-					if ii == 55 || ii == 66 || ii == 77 {
-						panic(fmt.Sprintf("#%d 不干了", ii))
-					}
-					fmt.Printf("#%d 开始值 %d\n", ii, counter.Load())
-					for i := 0; i < 1000000; i++ {
-						counter.Add(1)
-					}
-					fmt.Printf("#%d 结束值 %d\n", ii, counter.Load())
-					rs.ResolveValue(nil)
-				},
+		allWork = append(allWork, promise.NewPromiseWithSemaphore(promise.Job[any]{
+			Do: func(rs promise.Resolver[any], re promise.Rejector) {
+				if ii == 55 || ii == 66 || ii == 77 {
+					panic(fmt.Sprintf("#%d 不干了", ii))
+				}
+				fmt.Printf("#%d 开始值 %d\n", ii, counter.Load())
+				for i := 0; i < 1000000; i++ {
+					counter.Add(1)
+				}
+				fmt.Printf("#%d 结束值 %d\n", ii, counter.Load())
+				rs.ResolveValue(nil)
 			},
-		}).Init())
+		}, semaphore))
 	}
 	p := promise.ThenRequired(promise.CompoundFulfilledListener[any, any, any]{
-		OnFulfilled: func(cv *promise.CompoundResult[any, any]) any {
+		OnFulfilled: func(cv promise.CompoundResult[any, any]) any {
 			println("全部成功")
 			return nil
 		},

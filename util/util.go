@@ -1,5 +1,6 @@
 package util
 
-func Ptr[T any](t T) *T {
-	return &t
+func Assign[T any](target *T, value T) T {
+	*target = value
+	return value
 }
